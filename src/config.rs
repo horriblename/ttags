@@ -23,6 +23,10 @@ pub struct Config {
     pub relative_path: String,
     pub append: bool,
     pub lsp: bool,
+    pub custom_parser: Option<String>,
+    pub custom_queries: Option<String>,
+    pub custom_extension: Option<String>,
+    pub custom_filetype: Option<String>,
 }
 
 impl Config {
@@ -34,6 +38,20 @@ impl Config {
         let tag_path = Self::path_to_string(Self::fetch_tag_file(&matches));
         let relative_path = Self::path_to_string(Self::fetch_relative_path(&matches));
         let append = matches.is_present("append") || lsp;
+        let custom_parser = matches.value_of("parser").map(String::from);
+        let custom_queries = matches.value_of("queries").map(String::from);
+
+        let (custom_extension, custom_filetype) = match matches.value_of("extension") {
+            Some(ext) => {
+                let parts: Vec<&str> = ext.splitn(2, '=').collect();
+                if parts.len() == 2 {
+                    (Some(parts[0].to_string()), Some(parts[1].to_string()))
+                } else {
+                    todo!("error");
+                }
+            }
+            None => todo!("error"),
+        };
 
         Self {
             files,
@@ -41,6 +59,10 @@ impl Config {
             relative_path,
             append,
             lsp,
+            custom_parser,
+            custom_queries,
+            custom_extension,
+            custom_filetype,
         }
     }
 

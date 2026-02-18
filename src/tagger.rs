@@ -9,6 +9,7 @@ use std::process::exit;
 use crate::c;
 use crate::config::Config;
 use crate::cpp;
+use crate::custom::{self, CustomConfig};
 use crate::haskell;
 use crate::javascript;
 use crate::nix;
@@ -27,6 +28,7 @@ pub struct Tagger<'a> {
     pub swift_config: TagsConfiguration,
     pub c_config: TagsConfiguration,
     pub cpp_config: TagsConfiguration,
+    pub custom_config: Option<CustomConfig>,
     pub config: &'a Config,
 }
 
@@ -42,6 +44,17 @@ impl Tagger<'_> {
         let c_config = c::config();
         let cpp_config = cpp::config();
 
+        let custom_config = if let (Some(parser), Some(queries), Some(extension), Some(filetype)) = (
+            &config.custom_parser,
+            &config.custom_queries,
+            &config.custom_extension,
+            &config.custom_filetype,
+        ) {
+            Some(custom::config(parser, queries, extension, filetype))
+        } else {
+            None
+        };
+
         Tagger {
             config,
             context,
@@ -53,6 +66,7 @@ impl Tagger<'_> {
             swift_config,
             c_config,
             cpp_config,
+            custom_config,
         }
     }
 
@@ -120,6 +134,17 @@ impl Tagger<'_> {
     }
 
     fn type_mapping(&mut self, kind: Option<&str>, filename: &str, contents: &[u8]) -> Vec<Tag> {
+        if let Some(custom) = &self.custom_config {
+            if kind == Some(custom.extension.as_str()) {
+                return custom::generate_tags_custom(
+                    &mut self.context,
+                    &custom.tags_config,
+                    filename,
+                    contents,
+                );
+            }
+        }
+
         match kind {
             Some("rb") => {
                 ruby::generate_tags(&mut self.context, &self.ruby_config, filename, contents)
