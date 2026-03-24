@@ -1,5 +1,6 @@
 use clap::ArgMatches;
 use pathdiff::diff_paths;
+use std::collections::HashMap;
 use std::env;
 use std::ffi::OsStr;
 use std::fs::{File, OpenOptions};
@@ -18,6 +19,8 @@ impl Default for Config {
 }
 
 pub struct Config {
+    pub runtime_paths: Vec<PathBuf>,
+    pub filetype_mapping: HashMap<String, String>,
     pub files: Vec<String>,
     pub tag_path: String,
     pub relative_path: String,
@@ -41,6 +44,35 @@ impl Config {
         let custom_parser = matches.value_of("parser").map(String::from);
         let custom_queries = matches.value_of("queries").map(String::from);
 
+        let runtime_paths: Vec<PathBuf> = env::var("TT_PATH")
+            .map(|p| {
+                p.split(':')
+                    .map(|s| Path::new(s).normalize().resolve())
+                    .collect()
+            })
+            .unwrap_or_default();
+
+        let mut filetype_mapping: HashMap<String, String> = HashMap::new();
+        for base_path in &runtime_paths {
+            let filepath = base_path.join("filetypes.txt");
+            if let Ok(contents) = std::fs::read_to_string(&filepath) {
+                for line in contents.lines() {
+                    let line = line.trim();
+                    if line.is_empty() || line.starts_with('#') {
+                        continue;
+                    }
+                    if let Some((ext, ft)) = line.split_once('=') {
+                        filetype_mapping
+                            .entry(ext.to_string())
+                            .or_insert(ft.to_lowercase());
+                    } else {
+                        // TODO: color
+                        eprintln!("Warning: malformed line in {:?}:{}", filepath, line);
+                    }
+                }
+            }
+        }
+
         let (custom_extension, custom_filetype) = match matches.value_of("extension") {
             Some(ext) => {
                 let parts: Vec<&str> = ext.splitn(2, '=').collect();
@@ -63,6 +95,8 @@ impl Config {
             custom_queries,
             custom_extension,
             custom_filetype,
+            runtime_paths,
+            filetype_mapping,
         }
     }
 
