@@ -12,6 +12,7 @@ pub fn build_cli<'a>() -> App<'a, 'a> {
         .arg(parser_arg())
         .arg(queries_arg())
         .arg(extension_arg())
+        .arg(verbose_arg())
         .subcommand(lsp_subcommand())
 }
 
@@ -83,4 +84,16 @@ fn lsp_subcommand<'a>() -> App<'a, 'a> {
     SubCommand::with_name("lsp")
         .about("Creates lsp server")
         .setting(AppSettings::DisableVersion)
+}
+
+fn verbose_arg<'a>() -> Arg<'a, 'a> {
+    Arg::with_name("log-level")
+        .short("v")
+        .long("log-level")
+        .value_name("LEVEL")
+        .takes_value(true)
+        .required(false)
+        .possible_values(&["error", "warn", "info", "debug"])
+        .default_value("warn")
+        .help("Log level (error, warn, info, debug)")
 }

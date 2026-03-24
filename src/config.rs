@@ -1,4 +1,5 @@
 use clap::ArgMatches;
+use log::{debug, error, info, warn};
 use pathdiff::diff_paths;
 use std::collections::HashMap;
 use std::env;
@@ -35,6 +36,17 @@ pub struct Config {
 impl Config {
     pub fn new() -> Self {
         let matches = cli::build_cli().get_matches();
+
+        let log_level = match matches.value_of("log-level") {
+            Some("error") => log::LevelFilter::Error,
+            Some("warn") => log::LevelFilter::Warn,
+            Some("info") => log::LevelFilter::Info,
+            Some("debug") => log::LevelFilter::Debug,
+            _ => log::LevelFilter::Warn,
+        };
+        env_logger::Builder::from_default_env()
+            .filter_level(log_level)
+            .init();
 
         let lsp = matches.subcommand_name() == Some("lsp");
         let files = Self::fetch_files(&matches, lsp);

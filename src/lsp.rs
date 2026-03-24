@@ -1,4 +1,5 @@
 use crate::tagger::Tagger;
+use log::{debug, info};
 use std::error::Error;
 
 use lsp_server::{Connection, Message};
@@ -12,11 +13,11 @@ impl Lsp {
     pub fn run(tagger: &'_ mut Tagger) -> Result<i32, Box<dyn Error>> {
         let (connection, io_threads) = Connection::stdio();
 
-        eprintln!("starting ttags LSP server");
+        info!("starting ttags LSP server");
         connection.initialize(Self::server_capabilities())?;
 
         for msg in &connection.receiver {
-            eprintln!("got msg: {msg:?}");
+            debug!("got msg: {msg:?}");
 
             match msg {
                 Message::Request(req) => {
@@ -35,7 +36,7 @@ impl Lsp {
         }
 
         io_threads.join()?;
-        eprintln!("shutting down ttags server");
+        info!("shutting down ttags server");
 
         Ok(0)
     }
