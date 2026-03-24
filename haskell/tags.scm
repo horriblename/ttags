@@ -23,19 +23,26 @@
 
 ; Record field definitions
 (record
-    (field
-      (variable) @name) @definition.function)
+	fields: (fields
+		field: (field
+			name: (field_name (variable)) @name) @definition.field))
 
 ; Type synonym definitions
 (type_synomym
     name: (_) @name) @definition.class
 
 ; Function definitions
-(function
-    name: (variable) @name) @definition.function
+(declarations
+  (function
+    name: (variable) @name) @definition.function)
 
-(signature
-    name: (variable) @name) @definition.function
+(declarations
+  (bind
+    name: (variable) @name) @definition.function)
+
+(declarations
+  (signature
+    name: (variable) @name) @definition.function)
 
 ; Class definitions
 (class
