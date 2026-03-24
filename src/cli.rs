@@ -9,31 +9,9 @@ pub fn build_cli<'a>() -> App<'a, 'a> {
         .arg(tag_file_arg())
         .arg(relative_arg())
         .arg(append_arg())
-        .arg(parser_arg())
-        .arg(queries_arg())
         .arg(extension_arg())
         .arg(verbose_arg())
         .subcommand(lsp_subcommand())
-}
-
-fn parser_arg<'a>() -> Arg<'a, 'a> {
-    Arg::with_name("parser")
-        .short("p")
-        .long("parser")
-        .value_name("FILE")
-        .takes_value(true)
-        .required(false)
-        .help("Path to tree-sitter parser shared library (.so/.dll)")
-}
-
-fn queries_arg<'a>() -> Arg<'a, 'a> {
-    Arg::with_name("queries")
-        .short("q")
-        .long("queries")
-        .value_name("FILE")
-        .takes_value(true)
-        .required(false)
-        .help("Path to custom tags query file (.scm)")
 }
 
 fn extension_arg<'a>() -> Arg<'a, 'a> {

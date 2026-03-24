@@ -1,3 +1,4 @@
+use log::{info, warn};
 use npezza93_tree_sitter_tags::{TagsConfiguration, TagsContext};
 use rayon::prelude::*;
 use regex::Regex;
@@ -9,7 +10,7 @@ use std::process::exit;
 use crate::c;
 use crate::config::Config;
 use crate::cpp;
-use crate::custom::{self, CustomConfig};
+use crate::custom;
 use crate::haskell;
 use crate::javascript;
 use crate::nix;
@@ -28,7 +29,6 @@ pub struct Tagger<'a> {
     pub swift_config: TagsConfiguration,
     pub c_config: TagsConfiguration,
     pub cpp_config: TagsConfiguration,
-    pub custom_config: Option<CustomConfig>,
     pub config: &'a Config,
 }
 
@@ -44,17 +44,6 @@ impl Tagger<'_> {
         let c_config = c::config();
         let cpp_config = cpp::config();
 
-        let custom_config = if let (Some(parser), Some(queries), Some(extension), Some(filetype)) = (
-            &config.custom_parser,
-            &config.custom_queries,
-            &config.custom_extension,
-            &config.custom_filetype,
-        ) {
-            Some(custom::config(parser, queries, extension, filetype))
-        } else {
-            None
-        };
-
         Tagger {
             config,
             context,
@@ -66,7 +55,6 @@ impl Tagger<'_> {
             swift_config,
             c_config,
             cpp_config,
-            custom_config,
         }
     }
 
@@ -134,17 +122,6 @@ impl Tagger<'_> {
     }
 
     fn type_mapping(&mut self, kind: Option<&str>, filename: &str, contents: &[u8]) -> Vec<Tag> {
-        if let Some(custom) = &self.custom_config {
-            if kind == Some(custom.extension.as_str()) {
-                return custom::generate_tags_custom(
-                    &mut self.context,
-                    &custom.tags_config,
-                    filename,
-                    contents,
-                );
-            }
-        }
-
         match kind {
             Some("rb") => {
                 ruby::generate_tags(&mut self.context, &self.ruby_config, filename, contents)
@@ -174,6 +151,25 @@ impl Tagger<'_> {
             | Some("C") | Some("cppm") | Some("ixx") | Some("ii") | Some("H") | Some("hh")
             | Some("hpp") | Some("HPP") | Some("hxx") | Some("h++") | Some("tcc") => {
                 c::generate_tags(&mut self.context, &self.cpp_config, filename, contents)
+            }
+            Some(ext) => {
+                let Some(filetype) = self.config.filetype_mapping.get(ext) else {
+                    info!("Ignoring extension with no mapped filetype: {}", ext);
+                    return vec![];
+                };
+
+                match custom::find_query_and_parser(filetype, &ext, &self.config.runtime_paths) {
+                    Ok((custom, _)) => custom::generate_tags_custom(
+                        &mut self.context,
+                        &custom.tags_config,
+                        filename,
+                        contents,
+                    ),
+                    Err(err) => {
+                        warn!("skipping {} of filetype {}: {:?}", filename, filetype, err);
+                        vec![]
+                    }
+                }
             }
             _ => vec![],
         }

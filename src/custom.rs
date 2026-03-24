@@ -1,7 +1,9 @@
 use libloading::{Library, Symbol};
+use log::debug;
 use npezza93_tree_sitter_tags::{TagsConfiguration, TagsContext};
-use std::fs;
+use std::path::{Path, PathBuf};
 use std::str;
+use std::{fs, io};
 
 use crate::tag::Tag;
 
@@ -13,30 +15,98 @@ pub struct CustomConfig {
     _library: Library, // prevent library being dropped in config()
 }
 
-pub fn config(parser_path: &str, queries_path: &str, extension: &str, filetype: &str) -> CustomConfig {
-    let library = unsafe { Library::new(parser_path).expect("Failed to load parser library") };
+#[cfg(target_os = "windows")]
+const PARSER_EXT: &str = ".dll";
+#[cfg(target_os = "macos")]
+const PARSER_EXT: &str = ".dylib";
+#[cfg(target_os = "linux")]
+const PARSER_EXT: &str = ".so";
+
+#[derive(Debug)]
+pub enum Error {
+    MissingParser,
+    MissingQuery,
+    FailLoadParser(PathBuf, libloading::Error),
+    FailReadQuery(PathBuf, io::Error),
+    FailTag(npezza93_tree_sitter_tags::Error),
+}
+
+fn find_runtime_file(runtime_paths: &[PathBuf], rel_path: &Path) -> Option<PathBuf> {
+    runtime_paths.iter().find_map(|base_path| {
+        let path = base_path.join(rel_path);
+        if path.exists() { Some(path) } else { None }
+    })
+}
+
+pub fn find_query_and_parser(
+    filetype: &str,
+    extension: &str,
+    runtime_paths: &[PathBuf],
+) -> Result<(CustomConfig, String), Error> {
+    let Some(query_path) = find_runtime_file(
+        runtime_paths,
+        &Path::new("queries").join(filetype).join("tags.scm"),
+    ) else {
+        return Err(Error::MissingQuery);
+    };
+    debug!(
+        "custom filetype {} found query file path: {:?}",
+        filetype, query_path
+    );
+
+    let Some(parser_path) = find_runtime_file(
+        runtime_paths,
+        &Path::new("parser").join(format!("{}{}", filetype, PARSER_EXT)),
+    ) else {
+        return Err(Error::MissingParser);
+    };
+    debug!(
+        "custom filetype {} found parser: {:?}",
+        filetype, parser_path
+    );
+
+    let config = config(parser_path, query_path, &extension, filetype)?;
+
+    Ok((config, extension.to_string()))
+}
+
+pub fn config(
+    parser_path: PathBuf,
+    queries_path: PathBuf,
+    extension: &str,
+    filetype: &str,
+) -> Result<CustomConfig, Error> {
+    let library = unsafe {
+        match Library::new(&parser_path) {
+            Ok(library) => library,
+            Err(err) => return Err(Error::FailLoadParser(parser_path, err)),
+        }
+    };
 
     let func_name = format!("tree_sitter_{}", filetype);
     let language_fn: Symbol<LanguageFn> = unsafe {
-        library.get(func_name.as_bytes()).expect(&format!("TODO: Failed to get {} function", func_name))
+        match library.get(func_name.as_bytes()) {
+            Ok(f) => f,
+            Err(err) => return Err(Error::FailLoadParser(parser_path, err)),
+        }
     };
 
     let language_ptr = language_fn();
     let language = unsafe { tree_sitter::Language::from_raw(language_ptr) };
 
-    let queries = fs::read_to_string(queries_path).expect("TODO: Failed to read queries file");
+    let queries = match fs::read_to_string(&queries_path) {
+        Ok(q) => q,
+        Err(err) => return Err(Error::FailReadQuery(queries_path, err)),
+    };
 
-    let tags_config = TagsConfiguration::new(
-        language,
-        queries.as_str(),
-        "",
-    ).expect("TODO: Failed to create tags configuration");
+    let tags_config =
+        TagsConfiguration::new(language, queries.as_str(), "").map_err(Error::FailTag)?;
 
-    CustomConfig {
+    Ok(CustomConfig {
         tags_config,
         extension: extension.to_string(),
         _library: library,
-    }
+    })
 }
 
 pub fn generate_tags_custom<'a>(

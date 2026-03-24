@@ -20,17 +20,14 @@ impl Default for Config {
 }
 
 pub struct Config {
-    pub runtime_paths: Vec<PathBuf>,
-    pub filetype_mapping: HashMap<String, String>,
     pub files: Vec<String>,
     pub tag_path: String,
     pub relative_path: String,
     pub append: bool,
     pub lsp: bool,
-    pub custom_parser: Option<String>,
-    pub custom_queries: Option<String>,
+    pub runtime_paths: Vec<PathBuf>,
+    pub filetype_mapping: HashMap<String, String>,
     pub custom_extension: Option<String>,
-    pub custom_filetype: Option<String>,
 }
 
 impl Config {
@@ -53,11 +50,11 @@ impl Config {
         let tag_path = Self::path_to_string(Self::fetch_tag_file(&matches));
         let relative_path = Self::path_to_string(Self::fetch_relative_path(&matches));
         let append = matches.is_present("append") || lsp;
-        let custom_parser = matches.value_of("parser").map(String::from);
-        let custom_queries = matches.value_of("queries").map(String::from);
+        let custom_extension = matches.value_of("extension").map(String::from);
 
         let runtime_paths: Vec<PathBuf> = env::var("TT_PATH")
             .map(|p| {
+                debug!("Found $TT_PATH {}", p);
                 p.split(':')
                     .map(|s| Path::new(s).normalize().resolve())
                     .collect()
@@ -68,6 +65,7 @@ impl Config {
         for base_path in &runtime_paths {
             let filepath = base_path.join("filetypes.txt");
             if let Ok(contents) = std::fs::read_to_string(&filepath) {
+                info!("Reading filetype mapping from {:?}", &filepath);
                 for line in contents.lines() {
                     let line = line.trim();
                     if line.is_empty() || line.starts_with('#') {
@@ -78,24 +76,24 @@ impl Config {
                             .entry(ext.to_string())
                             .or_insert(ft.to_lowercase());
                     } else {
-                        // TODO: color
-                        eprintln!("Warning: malformed line in {:?}:{}", filepath, line);
+                        warn!("malformed line in {:?}:{}", filepath, line);
                     }
                 }
             }
         }
 
-        let (custom_extension, custom_filetype) = match matches.value_of("extension") {
-            Some(ext) => {
-                let parts: Vec<&str> = ext.splitn(2, '=').collect();
-                if parts.len() == 2 {
-                    (Some(parts[0].to_string()), Some(parts[1].to_string()))
-                } else {
-                    todo!("error");
+        if let Some(ext) = matches.value_of("extension") {
+            let parts: Vec<&str> = ext.splitn(2, '=').collect();
+            if parts.len() == 2 {
+                if !filetype_mapping.contains_key(parts[0]) {
+                    filetype_mapping.insert(parts[0].to_string(), parts[1].to_lowercase());
                 }
+            } else {
+                // FIXME: return error instead?
+                error!("Error: extension must be in format EXT=FILETYPE");
+                std::process::exit(1);
             }
-            None => todo!("error"),
-        };
+        }
 
         Self {
             files,
@@ -103,10 +101,7 @@ impl Config {
             relative_path,
             append,
             lsp,
-            custom_parser,
-            custom_queries,
             custom_extension,
-            custom_filetype,
             runtime_paths,
             filetype_mapping,
         }
